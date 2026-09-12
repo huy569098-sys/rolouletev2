@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roulette 4 Tay - 6 Cửa V2</title>
+<style>
+body{font-family:system-ui;background:#07111f;color:#eef6ff;margin:0}.w{max-width:1050px;margin:auto;padding:18px}
+.card{background:#0d1b2a;border:1px solid #294661;border-radius:15px;padding:15px;margin:12px 0}
+textarea{width:100%;min-height:130px;background:#050b14;color:#fff;border:1px solid #294661;border-radius:10px;padding:10px;box-sizing:border-box}
+button{padding:10px 13px;border:0;border-radius:9px;font-weight:800;margin:5px;background:#31d07c}button.b{background:#46c7ff}
+.hero{background:#0c2c23;border:1px solid #2e6f53;border-radius:14px;padding:17px}.pick{font-size:30px;font-weight:900}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.k{background:#07111f;border:1px solid #294661;border-radius:10px;padding:10px}.v{font-size:22px;font-weight:900}
+small,.muted{color:#98aec2}.good{color:#63e6a2}.bad{color:#ff8c8c}table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #20364d;text-align:center}th:first-child,td:first-child{text-align:left}
+@media(max-width:700px){.grid{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><div class="w">
+<h1>🎯 Roulette 4-Tay Analyzer V2</h1>
+<p class="muted">Chỉ phân tích 6 cửa trả 1:1: <b>Đỏ, Đen, Chẵn, Lẻ, Bé 1–18, Lớn 19–36</b>. Không còn Dozen/Column. Mỗi tín hiệu giữ nguyên tối đa 4 tay; trúng bất kỳ tay nào = thắng 1 chu kỳ, thua đủ 4 tay = thua 1 chu kỳ.</p>
+
+<div class="card"><h3>1) Dữ liệu 0–36, cũ → mới</h3>
+<textarea id="inp" placeholder="17 32 0 8 21 14 36 3 ..."></textarea><br>
+<button onclick="run()">Phân tích & chốt</button><button class="b" onclick="check()">Kiểm tra dữ liệu</button>
+<div id="msg" class="muted"></div></div>
+
+<div class="card"><h3>2) Kết luận duy nhất</h3><div id="hero" class="hero"><div class="pick">—</div>Dán tối thiểu 36 vòng.</div></div>
+
+<div class="card"><h3>3) Backtest Walk-Forward 4 tay</h3><div id="kpis" class="grid"></div><div id="detail" class="muted" style="margin-top:10px"></div></div>
+
+<div class="card"><h3>4) So sánh 6 cửa</h3><div style="overflow:auto"><table><thead><tr><th>Cửa</th><th>Điểm</th><th>Dự báo 1 tay</th><th>BT chu kỳ</th><th>Edge BT</th></tr></thead><tbody id="tb"></tbody></table></div></div>
+
+<div class="card"><h3>Quy tắc</h3><p>Ví dụ chốt <b>Đỏ</b>: vòng 1 thua → tiếp tục Đỏ; vòng 2 thua → tiếp tục; vòng 3 thua → tiếp tục; vòng 4 thắng thì cả chu kỳ vẫn tính <b>THẮNG</b>. Chỉ khi cả 4 vòng đều không ra Đỏ mới tính <b>THUA 1 chu kỳ</b>. Số 0 là thua đối với cả 6 cửa.</p>
+<small>Nuôi thêm tay làm tăng xác suất có ít nhất một lần trúng trong một chu kỳ, nhưng không tạo lợi thế toán học cho Roulette; Backtest dùng để kiểm tra độ ổn định của tín hiệu lịch sử.</small></div>
+
+<script>
+const R=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]),B=new Set([2,4,6,8,10,11,13,15,17,20,22,24,26,28,29,31,33,35]);
+const C=[
+{name:"Đỏ",win:n=>R.has(n)},{name:"Đen",win:n=>B.has(n)},
+{name:"Chẵn",win:n=>n!==0&&n%2===0},{name:"Lẻ",win:n=>n%2===1},
+{name:"Bé 1–18",win:n=>n>=1&&n<=18},{name:"Lớn 19–36",win:n=>n>=19&&n<=36}
+];
+const base=18/37,base4=1-Math.pow(1-base,4);
+function data(){return (inp.value.match(/\d+/g)||[]).map(Number).filter(x=>x>=0&&x<=36)}
+function pct(x){return (100*x).toFixed(1)+"%"}
+function check(){let d=data();msg.innerHTML="Đọc được <b>"+d.length+"</b> vòng hợp lệ."}
+function ph(c,d){
+ let a=d.slice(-36),b=d.slice(-108),wr=0,sw=0;
+ a.forEach((x,i)=>{let w=Math.pow(.95,a.length-1-i);sw+=w;if(c.win(x))wr+=w});
+ let p1=sw?wr/sw:base,p2=b.length?b.filter(c.win).length/b.length:base;
+ let last=d[d.length-1],n=0,w=0;
+ for(let i=1;i<d.length;i++)if(d[i-1]===last){n++;if(c.win(d[i]))w++}
+ let p3=n?(w+2*base)/(n+2):base;
+ let p=.42*p1+.38*p2+.20*p3;
+ return .65*p+.35*base;
+}
+function bt(c,d,w=150){
+ let a=d.slice(-w),i=0,cy=0,win=0,lose=0,t=[0,0,0,0];
+ while(i+3<a.length){cy++;let hit=-1;for(let h=0;h<4;h++)if(c.win(a[i+h])){hit=h;break}
+  if(hit>=0){win++;t[hit]++;i+=hit+1}else{lose++;i+=4}}
+ return {cy,win,lose,rate:cy?win/cy:0,t}
+}
+function score(c,d){
+ let p=ph(c,d),pred4=1-Math.pow(1-p,4),x=bt(c,d),edge=x.rate-base4,conf=x.cy/(x.cy+15);
+ let recent=d.slice(-36),r=recent.filter(c.win).length/(recent.length||1);
+ let sc=50+(pred4-base4)*70+edge*conf*45+(r-base)*10;
+ return {...c,p,pred4,x,edge,sc:Math.max(0,Math.min(100,sc))}
+}
+function choose(d){return C.map(c=>score(c,d)).sort((a,b)=>b.sc-a.sc)}
+function wf(d){
+ let i=Math.max(36,d.length-150),cy=0,w=0,l=0,t=[0,0,0,0],sel={};
+ while(i+3<d.length){
+  let c=choose(d.slice(0,i))[0];sel[c.name]=(sel[c.name]||0)+1;cy++;
+  let hit=-1;for(let h=0;h<4;h++)if(c.win(d[i+h])){hit=h;break}
+  if(hit>=0){w++;t[hit]++;i+=hit+1}else{l++;i+=4}
+ }
+ return {cy,w,l,t,rate:cy?w/cy:0,sel}
+}
+function run(){
+ let d=data();check();if(d.length<36){hero.innerHTML='<div class="pick">—</div>Cần ít nhất 36 vòng.';return}
+ let a=choose(d),q=a[0],z=wf(d);
+ hero.innerHTML='<small>KẾT LUẬN CHU KỲ TIẾP THEO</small><div class="pick">'+q.name+'</div><b>NUÔI TỐI ĐA 4 TAY</b><p>Dự báo 1 tay: <b>'+pct(q.p)+'</b> · dự báo có ít nhất 1 lần trúng trong 4 tay: <b>'+pct(q.pred4)+'</b>.</p>';
+ kpis.innerHTML='<div class="k"><small>Chu kỳ test</small><div class="v">'+z.cy+'</div></div><div class="k"><small>Thắng</small><div class="v good">'+z.w+'</div></div><div class="k"><small>Thua</small><div class="v bad">'+z.l+'</div></div><div class="k"><small>Tỷ lệ thắng</small><div class="v">'+pct(z.rate)+'</div></div><div class="k"><small>T1/T2/T3/T4</small><div class="v">'+z.t.join("/")+'</div></div>';
+ detail.innerHTML='Phân bố lựa chọn Walk-Forward: <b>'+Object.entries(z.sel).sort((a,b)=>b[1]-a[1]).map(x=>x[0]+": "+x[1]).join(" · ")+'</b>.';
+ tb.innerHTML=a.map(x=>'<tr><td><b>'+x.name+'</b></td><td>'+x.sc.toFixed(1)+'</td><td>'+pct(x.p)+'</td><td>'+x.x.win+'/'+x.x.cy+' ('+pct(x.x.rate)+')</td><td class="'+(x.edge>=0?'good':'bad')+'">'+(x.edge>=0?'+':'')+(x.edge*100).toFixed(1)+'đ%</td></tr>').join("");
+}
+</script></div></body></html>
